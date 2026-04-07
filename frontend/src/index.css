@@ -7,6 +7,21 @@
     flex-direction: row;
 }
 
+.split:not(.split-vertical) > * {
+    min-width: 0;
+    min-height: 0;
+}
+
+.split-vertical {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Let react-split panes shrink so inner scroll (Monaco, console) works */
+.split-vertical > * {
+    min-height: 0;
+}
+
 .gutter {
     background-color: #eee;
     background-repeat: no-repeat;
@@ -16,6 +31,19 @@
 .gutter.gutter-horizontal {
     background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
     cursor: col-resize;
+}
+
+.gutter.gutter-vertical {
+    background-color: rgba(255, 255, 255, 0.06);
+    cursor: row-resize;
+}
+
+[data-theme="light"] .gutter.gutter-vertical {
+    background-color: rgba(24, 24, 27, 0.12);
+}
+
+.workspace-split .gutter {
+    background-color: rgba(255, 255, 255, 0.07);
 }
 
 .code-editor {

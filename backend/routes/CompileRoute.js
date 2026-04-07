@@ -6,80 +6,163 @@ import url from "url";
 
 const router = express.Router();
 
-// Resolve __dirname in ES6 modules
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// API endpoint for compiling Java code
+const BACKEND_TMP = path.join(path.dirname(__dirname), "tmp");
+
+const EXEC_OPTS = { maxBuffer: 10 * 1024 * 1024 };
+
+function hrtimeMs(start) {
+  const [s, ns] = process.hrtime(start);
+  return (s * 1000 + ns / 1e6).toFixed(2);
+}
+
+function makeWorkDir() {
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const workDir = path.join(BACKEND_TMP, id);
+  fs.mkdirSync(workDir, { recursive: true });
+  return workDir;
+}
+
+function cleanupWorkDir(workDir) {
+  try {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  } catch (e) {
+    console.error("Cleanup failed:", e);
+  }
+}
+
+function pythonCommand() {
+  if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+  return process.platform === "win32" ? "python" : "python3";
+}
+
 router.post("/", (req, res) => {
   const code = req.body.code;
-  const input = req.body.input;
-  const javaFilePath = path.join(__dirname, "Main.java");
-  const classFilePath = path.join(__dirname, "Main");
-  const tempInputFilePath = path.join(__dirname, "tempInput.txt");
+  const input = req.body.input ?? "";
+  /* Support lang via body or query (belt-and-suspenders if body field is stripped). */
+  const language = String(
+    req.body.language ||
+      req.body.lang ||
+      req.query?.lang ||
+      req.query?.language ||
+      "java"
+  ).toLowerCase();
 
+  if (code === undefined || code === null) {
+    return res.status(400).json({ error: "Missing code" });
+  }
+
+  const allowed = ["java", "python", "javascript"];
+  if (!allowed.includes(language)) {
+    return res.status(400).json({
+      error: `Unsupported language "${language}". Use: ${allowed.join(", ")}`,
+    });
+  }
+
+  let workDir;
   try {
-    // Save the code to a temporary file
-    fs.writeFileSync(javaFilePath, code);
+    workDir = makeWorkDir();
+  } catch {
+    return res.status(500).json({ error: "Failed to create work directory" });
+  }
 
-    // Save the input to a temporary file
-    fs.writeFileSync(tempInputFilePath, input);
+  const inputPath = path.join(workDir, "stdin.txt");
+  try {
+    fs.writeFileSync(inputPath, input);
+  } catch {
+    cleanupWorkDir(workDir);
+    return res.status(500).json({ error: "Failed to write stdin file" });
+  }
 
-    // Compile the code using javac
-    const compileCommand = `javac "${javaFilePath}"`;
-
-    const startCompile = process.hrtime();
-
-    exec(compileCommand, (error, stdout, stderr) => {
-      const [compileSeconds, compileNanoseconds] = process.hrtime(startCompile);
-      const compileTime = (
-        compileSeconds * 1000 +
-        compileNanoseconds / 1e6
-      ).toFixed(2);
-
-      if (error) {
-        res.status(400).json({ error: stderr, compileTime });
-        return;
-      }
-
-      // Determine the execution command based on the platform
-      const runCommand = `java -cp "${__dirname}" Main < "${tempInputFilePath}"`;
-
-      const startRun = process.hrtime();
-
-      exec(runCommand, (runError, runStdout, runStderr) => {
-        const [runSeconds, runNanoseconds] = process.hrtime(startRun);
-        const executionTime = (
-          runSeconds * 1000 +
-          runNanoseconds / 1e6
-        ).toFixed(2);
+  const runShell = (command, cwd, startRunHrtime, compileTime) => {
+    exec(
+      command,
+      { cwd, shell: true, ...EXEC_OPTS },
+      (runError, runStdout, runStderr) => {
+        const executionTime = hrtimeMs(startRunHrtime);
+        const out = (runStdout || "").toString();
+        const errOut = (runStderr || "").toString();
 
         if (runError) {
-          res
-            .status(400)
-            .json({ error: runStderr, compileTime, executionTime });
-        } else {
-          res.json({
-            output: runStdout,
+          cleanupWorkDir(workDir);
+          return res.status(400).json({
+            error: errOut || out || String(runError.message || runError),
             compileTime,
             executionTime,
-            memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024, // Memory usage in MB
           });
         }
 
-        // Clean up the temporary files
-        try {
-          if (fs.existsSync(javaFilePath)) fs.unlinkSync(javaFilePath);
-          if (fs.existsSync(tempInputFilePath)) fs.unlinkSync(tempInputFilePath);
-          const classFilePath = path.join(__dirname, "Main.class");
-          if (fs.existsSync(classFilePath)) fs.unlinkSync(classFilePath);
-        } catch (cleanupError) {
-          console.error("Cleanup failed:", cleanupError);
+        cleanupWorkDir(workDir);
+        return res.json({
+          output: out,
+          compileTime,
+          executionTime,
+          memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024,
+        });
+      }
+    );
+  };
+
+  if (language === "java") {
+    const javaPath = path.join(workDir, "Main.java");
+    try {
+      fs.writeFileSync(javaPath, code);
+    } catch {
+      cleanupWorkDir(workDir);
+      return res.status(500).json({ error: "Failed to write Java source" });
+    }
+
+    const startCompile = process.hrtime();
+    exec(
+      `javac Main.java`,
+      { cwd: workDir, shell: true, ...EXEC_OPTS },
+      (jErr, _jOut, jStderr) => {
+        const compileTime = hrtimeMs(startCompile);
+        if (jErr) {
+          cleanupWorkDir(workDir);
+          return res.status(400).json({
+            error: (jStderr || "").toString() || String(jErr.message || jErr),
+            compileTime,
+          });
         }
-      });
-    });
-  } catch (writeError) {
-    res.status(500).json({ error: "Failed to write temporary file" });
+
+        const startRun = process.hrtime();
+        runShell(`java Main < stdin.txt`, workDir, startRun, compileTime);
+      }
+    );
+    return;
+  }
+
+  if (language === "python") {
+    const pyPath = path.join(workDir, "main.py");
+    try {
+      fs.writeFileSync(pyPath, code);
+    } catch {
+      cleanupWorkDir(workDir);
+      return res.status(500).json({ error: "Failed to write Python source" });
+    }
+
+    const compileTime = "0.00";
+    const startRun = process.hrtime();
+    const py = pythonCommand();
+    runShell(`${py} main.py < stdin.txt`, workDir, startRun, compileTime);
+    return;
+  }
+
+  if (language === "javascript") {
+    const jsPath = path.join(workDir, "main.js");
+    try {
+      fs.writeFileSync(jsPath, code);
+    } catch {
+      cleanupWorkDir(workDir);
+      return res.status(500).json({ error: "Failed to write JavaScript source" });
+    }
+
+    const compileTime = "0.00";
+    const startRun = process.hrtime();
+    runShell(`node main.js < stdin.txt`, workDir, startRun, compileTime);
   }
 });
 

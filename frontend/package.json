@@ -15,7 +15,9 @@
     "@emotion/styled": "^11.13.0",
     "@monaco-editor/react": "^4.6.0",
     "axios": "^1.7.3",
+    "clsx": "^2.1.1",
     "framer-motion": "^11.3.24",
+    "lucide-react": "^1.7.0",
     "prismjs": "^1.29.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -24,7 +26,8 @@
     "react-simple-code-editor": "^0.14.1",
     "react-split": "^2.0.14",
     "react-syntax-highlighter": "^15.5.0",
-    "react-toastify": "^10.0.5"
+    "react-toastify": "^10.0.5",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

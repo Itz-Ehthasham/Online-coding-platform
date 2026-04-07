@@ -1,192 +1,177 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import Prism from "prismjs";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { solarizedlight } from "react-syntax-highlighter/dist/esm/styles/prism"; // Choose a style
+import { Play, Loader2, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  assembleArenaProgram,
+  problemUsesFunctionHarness,
+} from "@/data/staticArenaProblems";
 
-function ArenaCodeEditor({ id }) {
+const API = "http://localhost:5555";
+
+const LANGS = [
+  { id: "java", label: "Java" },
+  { id: "python", label: "Python" },
+  { id: "javascript", label: "JavaScript" },
+];
+
+/** Fallback skeleton when a DB problem has no `setups` / `starters`. */
+const DEFAULT_SETUP = {
+  java: `public class Main {
+    public static void main(String[] args) {
+        // TODO: read stdin if needed, print answer
+    }
+}
+`,
+  python: `# Read from stdin, print answer
+
+`,
+  javascript: `// e.g. const fs = require("fs");
+// const input = fs.readFileSync(0, "utf8");
+// print answer with console.log(...)
+
+`,
+};
+
+function resolveSetup(problem, language) {
+  return (
+    problem?.setups?.[language] ??
+    problem?.starters?.[language] ??
+    DEFAULT_SETUP[language] ??
+    ""
+  );
+}
+
+function ArenaCodeEditor({ problem }) {
+  const [language, setLanguage] = useState("java");
   const [code, setCode] = useState("");
-  const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
-  const [solution, setSolution] = useState("");
-  // const [language, setLanguage] = useState("java");
+  const [running, setRunning] = useState(false);
 
-  const [problem, setProblem] = useState(null);
+  const applySetup = useCallback(() => {
+    setCode(resolveSetup(problem, language));
+  }, [problem, language]);
 
   useEffect(() => {
-    const fetchProblem = async () => {
-      try {
-        const response = await axios.get(`http://localhost:5555/problem/${id}`);
-        setProblem(response.data.data);
-      } catch (error) {
-        console.error("Error fetching problem:", error);
-      }
-    };
-    fetchProblem();
-  }, [id]);
+    applySetup();
+  }, [applySetup, problem?.id, language]);
 
-  if (!problem) {
-    return <div>Loading...</div>;
-  }
-  const handleChange = (e) => {
-    setCode(e.target.value);
-  };
+  const usesHarness = problemUsesFunctionHarness(problem);
+  const runnableCode = assembleArenaProgram(problem, language, code);
+  const runInput =
+    usesHarness && problem.testCases?.length
+      ? (problem.testCases[0].input ?? "")
+      : "";
 
   const handleCompile = async () => {
+    setRunning(true);
+    setOutput("");
     try {
-      const response = await axios.post("http://localhost:5555/compile", {
-        code,
-        input,
-      });
-      const { output, compileTime, executionTime, memoryUsage } = response.data;
-
-      // Format the output to include compile time, execution time, and memory usage
-      const formattedOutput = `Output:
-${output}
-
-Compile Time: ${compileTime} ms
-Execution Time: ${executionTime} ms
-Memory Usage: ${memoryUsage.toFixed(2)} MB`;
-
-      setOutput(formattedOutput);
+      const response = await axios.post(
+        `${API}/compile`,
+        { code: runnableCode, input: runInput, language },
+        { params: { lang: language } }
+      );
+      const { output: out, compileTime, executionTime, memoryUsage } =
+        response.data;
+      const mem =
+        memoryUsage != null && !Number.isNaN(Number(memoryUsage))
+          ? `${Number(memoryUsage).toFixed(2)} MB`
+          : "N/A";
+      setOutput(
+        `Output:\n${out}\n\nCompile / run: ${compileTime} ms | Exec: ${executionTime} ms | Mem: ${mem}`
+      );
     } catch (error) {
-      const errorOutput = `
-Error:
-${error.response.data.error}
-
-Compile Time: N/A
-Execution Time: N/A
-Memory Usage: N/A`;
-
-      setOutput(errorOutput);
-    }
-  };
-
-  const test = problem.testCases;
-
-  const handleSubmit = async () => {
-    try {
-      const response = await axios.post("http://localhost:5555/submit", {
-        code,
-        testCases: problem.testCases,
-      });
-      setSolution(response.data.results);
-    } catch (error) {
-      setSolution(error.response.data.error);
+      const msg =
+        error.response?.data?.error ??
+        error.message ??
+        "Unknown error";
+      setOutput(`Error:\n${msg}`);
+    } finally {
+      setRunning(false);
     }
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>Java Code Playground</h1>
-      <br />
-      <div style={{ position: "relative", width: "100%" }}>
-        {/* Highlighted Code */}
-        {/* <SyntaxHighlighter
-          language="java"
-          style={solarizedlight}
-          customStyle={{
-            position: "absolute",
-            top: "0",
-            left: "0",
-            width: "100%",
-            height: "300px",
-            overflow: "auto",
-            padding: "10px",
-            margin: 0,
-            zIndex: 1,
-            backgroundColor: "white",
-            color: "black",
-          }}
-          // showLineNumbers={true}
+    <div className="flex h-full min-h-[480px] flex-col border-l border-white/[0.06] text-white">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.08] bg-white/[0.03] px-3 py-2">
+        <div className="relative">
+          <label className="sr-only" htmlFor="arena-lang">
+            Language
+          </label>
+          <select
+            id="arena-lang"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className={cn(
+              "h-9 cursor-pointer appearance-none rounded-lg border border-white/[0.12] bg-white/[0.05] py-1.5 pl-3 pr-8 text-sm text-white/90",
+              "outline-none focus:ring-1 focus:ring-indigo-400/40"
+            )}
+          >
+            {LANGS.map((l) => (
+              <option key={l.id} value={l.id} className="bg-zinc-900">
+                {l.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+        </div>
+        <button
+          type="button"
+          onClick={applySetup}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:bg-white/5"
         >
-          {code}
-        </SyntaxHighlighter> */}
+          Reset setup
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={handleCompile}
+          disabled={running}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-600/20 px-3 py-1.5 text-sm font-medium text-sky-100 disabled:opacity-50"
+        >
+          {running ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+          Run
+        </button>
+      </div>
 
-        {/* Textarea */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+        <p className="text-xs text-white/45">
+          {usesHarness ? (
+            <>
+              <strong className="text-white/65">LeetCode-style:</strong> edit the{" "}
+              <strong className="text-white/65">function / Solution</strong> below.
+              <strong className="text-white/65"> Run</strong> uses sample stdin (first case) and shows your stdout.
+            </>
+          ) : (
+            <>
+              Full program mode: your code reads stdin.{" "}
+              <strong>Run</strong> uses empty stdin unless your problem states otherwise.
+            </>
+          )}
+        </p>
         <textarea
-          rows="10"
-          cols="50"
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Write your Java code here"
-          style={{
-            position: "relative",
-            width: "100%",
-            height: "300px",
-            padding: "10px",
-            fontSize: "16px",
-            fontFamily: "monospace",
-            backgroundColor: "white",
-            color: "black",
-            zIndex: 2,
-            caretColor: "black",
-            border: "1px solid #ccc",
-            resize: "none",
-            overflowY: "auto",
-          }}
+          spellCheck={false}
+          className="min-h-[240px] w-full flex-1 resize-y rounded-xl border border-white/[0.1] bg-[#0a0a0a] p-3 font-mono text-sm text-white/90 outline-none focus:ring-1 focus:ring-indigo-500/40"
+          placeholder={
+            usesHarness
+              ? "Implement solve / Solution here"
+              : "Write your full program here"
+          }
         />
+
+        {output ? (
+          <pre className="whitespace-pre-wrap rounded-xl border border-white/[0.08] bg-black/40 p-3 font-mono text-xs text-white/75">
+            {output}
+          </pre>
+        ) : null}
       </div>
-      <br />
-      <br />
-      <h1>Custom Input</h1>
-      <textarea
-        rows="5"
-        cols="50"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Provide your custom input here"
-        style={{
-          padding: "10px",
-          width: "100%",
-          fontSize: "16px",
-          fontFamily: "monospace",
-          marginTop: "10px",
-        }}
-      />
-      <br />
-      <br />
-      <button
-        className="px-8 py-4 rounded-medium border-2 border-blue-400"
-        onClick={handleCompile}
-      >
-        Compile & Run
-      </button>
-      <span>            </span>
-      <button
-        className="px-8 py-4 rounded-medium border-2 border-blue-400"
-        onClick={handleSubmit}
-      >
-        Submit
-      </button>
-      <br />
-      <br />
-      <h2>Output:</h2>
-      <br />
-      <pre style={{ background: "lightgray", padding: "10px", color: "black" }}>
-        {output}
-      </pre>
-      {solution && (
-        <div>
-          <h3>Results:</h3>
-          {solution.map((result, index) => (
-            <div key={index} style={{ marginBottom: "10px" }}>
-              <p>
-                <strong>Test Case {index + 1}:</strong>
-              </p>
-              <p>
-                <strong>Passed:</strong> {result.passed ? "Yes" : "No"}
-              </p>
-              <p>
-                <strong>Output:</strong> {result.output}
-              </p>
-              <p>
-                <strong>Expected Output:</strong> {result.expectedOutput}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
