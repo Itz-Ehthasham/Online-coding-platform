@@ -4,6 +4,11 @@ import Split from "react-split";
 import axios from "axios";
 import { Play, Loader2, Terminal, FileInput, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  assembleArenaProgram,
+  problemUsesFunctionHarness,
+  resolveArenaSetup,
+} from "@/data/staticArenaProblems";
 
 const API_BASE = "http://localhost:5555";
 
@@ -30,11 +35,27 @@ const DEFAULT_TEMPLATES = {
 `,
 };
 
-function CodeEditor({ uiTheme = "dark" }) {
+function CodeEditor({ uiTheme = "dark", defaultLanguage = "javascript", problem = null }) {
   const isDark = uiTheme === "dark";
-  const [language, setLanguage] = useState("java");
-  const [code, setCode] = useState(DEFAULT_TEMPLATES.java);
-  const [input, setInput] = useState("");
+  const initialLang = LANGUAGES.some((l) => l.id === defaultLanguage)
+    ? defaultLanguage
+    : "javascript";
+  const [language, setLanguage] = useState(initialLang);
+  const [code, setCode] = useState(() =>
+    problem
+      ? resolveArenaSetup(problem, initialLang)
+      : DEFAULT_TEMPLATES[initialLang]
+  );
+  const [input, setInput] = useState(() => {
+    if (
+      problem &&
+      problemUsesFunctionHarness(problem) &&
+      problem.testCases?.length
+    ) {
+      return problem.testCases[0].input ?? "";
+    }
+    return "";
+  });
   const [output, setOutput] = useState("");
   const [consoleTab, setConsoleTab] = useState("input");
   const [running, setRunning] = useState(false);
@@ -47,6 +68,17 @@ function CodeEditor({ uiTheme = "dark" }) {
 
   const langConfig =
     LANGUAGES.find((l) => l.id === language) ?? LANGUAGES[0];
+
+  const usesHarness = problem ? problemUsesFunctionHarness(problem) : false;
+
+  useEffect(() => {
+    if (!problem) return;
+    if (problemUsesFunctionHarness(problem) && problem.testCases?.length) {
+      setInput(problem.testCases[0].input ?? "");
+    } else {
+      setInput("");
+    }
+  }, [problem?.id]);
 
   const handleMonacoMount = useCallback((editor, monaco) => {
     monacoEditorRef.current = editor;
@@ -127,16 +159,28 @@ function CodeEditor({ uiTheme = "dark" }) {
 
   const handleLanguageChange = (nextId) => {
     setLanguage(nextId);
-    setCode(DEFAULT_TEMPLATES[nextId] ?? DEFAULT_TEMPLATES.java);
+    setCode(
+      problem
+        ? resolveArenaSetup(problem, nextId)
+        : DEFAULT_TEMPLATES[nextId] ?? DEFAULT_TEMPLATES.javascript
+    );
   };
+
+  const handleResetSetup = useCallback(() => {
+    if (!problem) return;
+    setCode(resolveArenaSetup(problem, language));
+  }, [problem, language]);
 
   const handleCompile = async () => {
     setRunning(true);
     setConsoleTab("output");
+    const runnableCode = problem
+      ? assembleArenaProgram(problem, language, code)
+      : code;
     try {
       const response = await axios.post(
         `${API_BASE}/compile`,
-        { code, input, language },
+        { code: runnableCode, input, language },
         { params: { lang: language } }
       );
 
@@ -232,6 +276,31 @@ Memory usage: N/A`);
         >
           Editor
         </span>
+        {problem && usesHarness ? (
+          <span
+            className={cn(
+              "hidden max-w-[200px] truncate text-[10px] leading-tight sm:max-w-[280px] md:inline",
+              isDark ? "text-white/35" : "text-zinc-400"
+            )}
+            title="Sample stdin is prefilled from the first test case; edit Input if needed."
+          >
+            Harness run · stdin from sample (editable below)
+          </span>
+        ) : null}
+        {problem ? (
+          <button
+            type="button"
+            onClick={handleResetSetup}
+            className={cn(
+              "rounded-lg border px-2.5 py-1.5 text-xs transition sm:px-3",
+              isDark
+                ? "border-white/10 text-white/60 hover:bg-white/5"
+                : "border-zinc-300 text-zinc-600 hover:bg-zinc-100"
+            )}
+          >
+            Reset setup
+          </button>
+        ) : null}
         <div className="flex-1" />
         <button
           type="button"

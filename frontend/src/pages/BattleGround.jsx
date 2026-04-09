@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { Calendar, ChevronLeft, ChevronRight, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { STATIC_BATTLEGROUND_CONTESTS } from "@/data/staticBattlegroundContests";
 
 const API = "http://localhost:5555";
 
@@ -30,9 +31,12 @@ const BattleGround = () => {
     fetchContests();
   }, []);
 
-  const sortedContests = [...contests].sort(
-    (a, b) => new Date(a.startTime) - new Date(b.startTime)
-  );
+  const sortedContests = useMemo(() => {
+    const merged = [...STATIC_BATTLEGROUND_CONTESTS, ...contests];
+    return merged.sort(
+      (a, b) => new Date(a.startTime) - new Date(b.startTime)
+    );
+  }, [contests]);
 
   return (
     <div className="relative min-h-screen w-full bg-[#030303] text-white">
@@ -81,16 +85,17 @@ const BattleGround = () => {
 
         {sortedContests.length === 0 ? (
           <p className="rounded-2xl border border-white/[0.1] bg-white/[0.03] px-6 py-12 text-center text-white/45 backdrop-blur-sm">
-            No contests loaded. Check your API or add contests in the database.
+            No contests available.
           </p>
         ) : (
           <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {sortedContests.map((contest) => {
               const status = contestStatus(contest.startTime, contest.endTime);
+              const rowKey = contest.isStatic ? contest.id : contest._id;
               return (
-                <li key={contest._id}>
+                <li key={rowKey}>
                   <Link
-                    to={`/contest/${contest.name}`}
+                    to={`/contest/${contest.isStatic ? contest.slug : contest.name}`}
                     className={cn(
                       "group flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-white/[0.03] p-5 text-left shadow-[0_8px_32px_0_rgba(0,0,0,0.35)] backdrop-blur-sm transition",
                       "hover:border-white/[0.18] hover:bg-white/[0.05] hover:shadow-[0_12px_40px_0_rgba(99,102,241,0.12)]",
@@ -100,6 +105,11 @@ const BattleGround = () => {
                     <div className="mb-3 flex items-start justify-between gap-2">
                       <h3 className="text-lg font-semibold text-white group-hover:text-indigo-200/95">
                         {contest.name}
+                        {contest.isStatic ? (
+                          <span className="ml-2 align-middle rounded border border-indigo-400/25 bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-200/90">
+                            Built-in
+                          </span>
+                        ) : null}
                       </h3>
                       <ChevronRight className="h-5 w-5 shrink-0 text-white/35 transition group-hover:translate-x-0.5 group-hover:text-white/60" />
                     </div>

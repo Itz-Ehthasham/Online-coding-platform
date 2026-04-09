@@ -30,8 +30,10 @@ _a, _b = map(int, sys.stdin.read().split())
 print(solve(_a, _b))
 `;
 
-const H_SUM_JS = `{{USER_CODE}}
-const fs = require("fs");
+const H_SUM_JS = `import fs from "fs";
+
+{{USER_CODE}}
+
 const _nums = fs.readFileSync(0, "utf8").trim().split(/\\s+/).map(Number);
 console.log(solve(_nums[0], _nums[1]));
 `;
@@ -58,6 +60,26 @@ const H_HELLO_JS = `{{USER_CODE}}
 solve();
 `;
 
+/** Fallback starter when a problem has no per-language `setups` / `starters`. */
+export const ARENA_DEFAULT_SETUP = {
+  java: `public class Main {
+    public static void main(String[] args) {
+    }
+}
+`,
+  python: "",
+  javascript: "",
+};
+
+export function resolveArenaSetup(problem, language) {
+  return (
+    problem?.setups?.[language] ??
+    problem?.starters?.[language] ??
+    ARENA_DEFAULT_SETUP[language] ??
+    ""
+  );
+}
+
 export const STATIC_ARENA_PROBLEMS = [
   {
     isStatic: true,
@@ -67,7 +89,7 @@ export const STATIC_ARENA_PROBLEMS = [
     category: "Basics",
     difficulty: "Easy",
     description:
-      "Implement **Solution** (Java) or **`solve(a, b)`** (Python/JS).\n\nReturn the sum of two integers. Hidden tests pass stdin like `4 7` and expect stdout `11` (LeetCode-style driver).",
+      "Java: implement class Solution with public int solve(int a, int b) that returns a + b.\nPython: def solve(a, b).\nJavaScript: function solve(a, b).\n\nThe runner reads two integers from stdin (e.g. 4 and 7) and prints your return value (e.g. 11).",
     testCases: [
       { _id: "s1", input: "2 3\n", output: "5" },
       { _id: "s2", input: "10 20\n", output: "30" },
@@ -81,17 +103,14 @@ export const STATIC_ARENA_PROBLEMS = [
     setups: {
       java: `class Solution {
     public int solve(int a, int b) {
-        // TODO: return a + b
         return 0;
     }
 }
 `,
       python: `def solve(a, b):
-    # TODO: return a + b
     pass
 `,
       javascript: `function solve(a, b) {
-    // TODO: return a + b
 }
 `,
     },
@@ -104,7 +123,7 @@ export const STATIC_ARENA_PROBLEMS = [
     category: "Basics",
     difficulty: "Easy",
     description:
-      "Implement **Solution.solve(a,b)** (Java) or **`solve(a, b)`** (Python/JS).\n\nReturn the larger integer (either if equal). Stdin is two integers.",
+      "Java: class Solution, public int solve(int a, int b) — return the larger value (either if equal).\nPython: def solve(a, b).\nJavaScript: function solve(a, b).\n\nStdin is two integers.",
     testCases: [
       { _id: "m1", input: "3 9\n", output: "9" },
       { _id: "m2", input: "42 10\n", output: "42" },
@@ -118,17 +137,14 @@ export const STATIC_ARENA_PROBLEMS = [
     setups: {
       java: `class Solution {
     public int solve(int a, int b) {
-        // TODO: return the larger of a and b
         return 0;
     }
 }
 `,
       python: `def solve(a, b):
-    # TODO: return max(a, b)
     pass
 `,
       javascript: `function solve(a, b) {
-    // TODO: return Math.max(a, b)
 }
 `,
     },
@@ -141,7 +157,7 @@ export const STATIC_ARENA_PROBLEMS = [
     category: "Warmup",
     difficulty: "Easy",
     description:
-      "Implement **Solution.solve()** (Java) or **`solve()`** (Python/JS) with **no parameters**.\n\nPrint exactly one line: `Hello Arena`",
+      "Java: class Solution with void solve() (no parameters).\nPython: def solve(): with no parameters.\nJavaScript: function solve() with no parameters.\n\nPrint exactly one line containing: Hello Arena",
     testCases: [{ _id: "h1", input: "", output: "Hello Arena" }],
     harnesses: {
       java: H_HELLO_JAVA,
@@ -151,16 +167,13 @@ export const STATIC_ARENA_PROBLEMS = [
     setups: {
       java: `class Solution {
     void solve() {
-        // TODO: print exactly: Hello Arena
     }
 }
 `,
       python: `def solve():
-    # TODO: print exactly: Hello Arena
     pass
 `,
       javascript: `function solve() {
-    // TODO: print exactly: Hello Arena
 }
 `,
     },

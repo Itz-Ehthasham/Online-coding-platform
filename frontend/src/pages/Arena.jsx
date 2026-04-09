@@ -88,13 +88,6 @@ const Arena = () => {
       </header>
 
       <main className="relative z-10 mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
-        <p className="mb-4 rounded-xl border border-indigo-400/20 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100/90">
-          <strong className="text-indigo-200">Built-in problems</strong> use a{" "}
-          <strong>LeetCode-style</strong> contract: implement{" "}
-          <code className="text-indigo-200/90">solve(...)</code> /{" "}
-          <code className="text-indigo-200/90">class Solution</code>, then <strong>Run</strong> with sample stdin.
-          Database problems still use a <strong>full program</strong> that reads stdin.
-        </p>
         <div className="overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.03] shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] backdrop-blur-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">

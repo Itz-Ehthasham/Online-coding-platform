@@ -46,6 +46,10 @@
     background-color: rgba(255, 255, 255, 0.07);
 }
 
+[data-theme="light"] .workspace-split .gutter {
+    background-color: rgba(24, 24, 27, 0.12);
+}
+
 .code-editor {
   display: flex;
   flex-direction: column;
